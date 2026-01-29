@@ -33,6 +33,43 @@ from datetime import datetime
 import sys, os
 import streamlit as st
 from PIL import Image
+import json 
+from pathlib import Path
+
+
+# ==========================================================
+# CONFIGURACIÓN HISTORIAL IPI
+# ==========================================================
+meses = {
+    1: "Enero", 2: "Febrero", 3: "Marzo", 4: "Abril",
+    5: "Mayo", 6: "Junio", 7: "Julio", 8: "Agosto",
+    9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
+}
+
+anio = st.selectbox("Año", range(2020, datetime.now().year + 1))
+mes_num = st.selectbox("Mes", meses.keys(), format_func=lambda x: meses[x])
+
+periodo = f"{anio}-{mes_num:02d}"
+st.write("Periodo seleccionado:", periodo)
+
+DATA_FILE = Path("data_ipi.json")
+def leer_data():
+    if DATA_FILE.exists():
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return {}
+
+def guardar_periodo(periodo, cp, cociente, ipi):
+    data = leer_data()
+
+    data[periodo] = {
+        "cp": cp,
+        "cociente": cociente,
+        "ipi": ipi
+    }
+
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4)
 
 
 # ==========================================================
@@ -399,6 +436,9 @@ if file_an9 and file_an10 and file_base:
             mime        =   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
+
+
+
 # ==========================================================
 # VISUALIZACIÓN EN PANTALLA
 # ==========================================================
@@ -437,3 +477,19 @@ if file_an9 and file_an10 and file_base:
             
             st.subheader("Listado de Eventos sobre el Umbral")
             st.dataframe(res['df_filtrado'], width="stretch")
+
+
+if st.button("Guardar / Actualizar"):
+    guardar_periodo(
+        periodo,
+        cp_calculado,
+        c_cociente,
+        ipi_final
+    )
+    st.success(f"Periodo {periodo} guardado correctamente")
+
+data = leer_data()
+
+if data:
+    st.subheader("Histórico")
+    st.json(data)
