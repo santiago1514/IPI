@@ -361,7 +361,7 @@ with header_col2:
 with st.sidebar:
     st.header("⚙️ Parámetros")
     umbral_val  = st.number_input("Umbral de cuantía"                       , value=27470842.66,    format="%.2f")
-    cin_input   = st.number_input("CIN: Componente de Indicador de Negocio" , value=6500835369.01,  format="%.2f")
+    cin_input   = st.number_input("CIN: Componente de Indicador de Negocio" , value=13946774132.33,  format="%.2f")
     st.divider  ()
     st.info     ("Cargue los archivos para iniciar el análisis.")
 
