@@ -26,13 +26,9 @@ El cálculo considera:
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from io import BytesIO
-import numpy as np
 from datetime import datetime
-import sys, os
 import streamlit as st
-from PIL import Image
 import json 
 from pathlib import Path
 
@@ -46,7 +42,7 @@ meses = {
     9: "Septiembre", 10: "Octubre", 11: "Noviembre", 12: "Diciembre"
 }
 
-anio = st.selectbox("Año", range(2020, datetime.now().year + 1))
+anio = st.selectbox("Año", range(2025, datetime.now().year + 1))
 mes_num = st.selectbox("Mes", meses.keys(), format_func=lambda x: meses[x])
 
 periodo = f"{anio}-{mes_num:02d}"
@@ -59,18 +55,6 @@ def leer_data():
             return json.load(f)
     return {}
 
-def guardar_periodo(periodo, cp, cociente, ipi):
-    data = leer_data()
-
-    data[periodo] = {
-        "cp": cp,
-        "cociente": cociente,
-        "ipi": ipi
-    }
-
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=4)
-
 
 # ==========================================================
 # CONFIGURACIÓN GENERAL DE LA PÁGINA
@@ -79,17 +63,6 @@ st.set_page_config(
     page_title="Cálculo Componente de Pérdida",
     layout="wide"
 )
-
-def resource_path(relative_path):
-    """ Obtiene la ruta correcta tanto en desarrollo como en .exe """
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
-
-logo = Image.open(resource_path("logo_empresa.png"))
-st.image(logo, width=200)
 
 
 # ==========================================================
@@ -167,7 +140,7 @@ def obtener_ipi(c):
 # ==========================================================
 # FUNCIÓN PRINCIPAL DE CÁLCULO IPI
 # ==========================================================
-def ejecutar_calculo(An9, An10, df, umbral_input):
+def ejecutar_calculo(An9, An10, umbral_input):
     """
     Ejecuta el cálculo del componente de pérdida operacional.
 
@@ -219,20 +192,16 @@ def ejecutar_calculo(An9, An10, df, umbral_input):
 
     AN9 = An9_2.merge(An10_agg, on="Referencia", how="left")
 
-    AN9[["Recuperacion", "Cuentas Catálogo Recuperación"]] = (
-        AN9[["Recuperacion", "Cuentas Catálogo Recuperación"]].fillna('')
-        )
+    # Normalizamos recuperaciones como numérico y dejamos catálogo como cadena vacía si falta
+    AN9["Recuperacion"] = pd.to_numeric(AN9["Recuperacion"], errors="coerce").fillna(0)
+    AN9["Cuentas Catálogo Recuperación"] = AN9["Cuentas Catálogo Recuperación"].fillna("")
     
     # ------------------------------------------------------
     # 3. CÁLCULO DE PÉRDIDA NETA
     # ------------------------------------------------------
-    AN9["Cuantia_bruta"] = pd.to_numeric(
-        AN9["Cuantia_bruta"], errors="coerce"
-    ).fillna(0)
-    
-    AN9["Cuantia_recuperada_por_seguros"] = ( pd.to_numeric(
-        AN9["Recuperacion"], errors="coerce"
-    ).fillna(0) )
+    AN9["Cuantia_bruta"] = pd.to_numeric(AN9["Cuantia_bruta"], errors="coerce").fillna(0)
+    # Recuperacion ya normalizada arriba; asignamos directamente como cuantía recuperada
+    AN9["Cuantia_recuperada_por_seguros"] = AN9["Recuperacion"]
 
     AN9["Pérdida neta ( Pérdida bruta menos recuperaciones)"] = (
         AN9["Cuantia_bruta"] -
@@ -263,7 +232,7 @@ def ejecutar_calculo(An9, An10, df, umbral_input):
     # ------------------------------------------------------
     DATA["Fecha"] = pd.to_datetime(DATA["Fecha_de_registro_contable"], errors="coerce")
     DATA["anio_nov"] = DATA["Fecha"].dt.year
-    DATA.loc[DATA["Fecha"].dt.month < 11, "anio_nov"] -= 1
+    DATA.loc[DATA["Fecha"].dt.month <= 10, "anio_nov"] -= 1
     DATA["Año_banda"] = DATA["anio_nov"] - DATA["anio_nov"].min() + 1
 
     # ------------------------------------------------------
@@ -336,20 +305,29 @@ def ejecutar_calculo(An9, An10, df, umbral_input):
     78: "7.8 Otros"
     }
     
-    DATA2 ["Clase_de_riesgo_operacional_nivel_2"] = ( DATA2 ["Clase_de_riesgo_operacional_nivel_2"] .map(map_riesgo_nivel_2))
-    DATA  ["Clase_de_riesgo_operacional_nivel_2"] = ( DATA  ["Clase_de_riesgo_operacional_nivel_2"] .map(map_riesgo_nivel_2))
+    DATA2["Clase_de_riesgo_operacional_nivel_2"] = DATA2["Clase_de_riesgo_operacional_nivel_2"].map(map_riesgo_nivel_2)
+    DATA["Clase_de_riesgo_operacional_nivel_2"] = DATA["Clase_de_riesgo_operacional_nivel_2"].map(map_riesgo_nivel_2)
 
     tabla_riesgo_banda          = DATA2.groupby(["Clase_de_riesgo_operacional_nivel_2", "Año_banda"], observed=True)["Cuantia_bruta"].sum().reset_index()    
     tabla_riesgo_banda_umbral   = tabla_riesgo_banda[tabla_riesgo_banda["Cuantia_bruta"] >= umbral_input]
     totalizador_umbral_anio     = tabla_riesgo_banda_umbral.groupby("Año_banda")["Cuantia_bruta"].sum().reset_index()      
 
-    A = totalizador_umbral.set_index("Año")["Total Pérdida neta"]           if not totalizador_umbral.empty         else pd.Series()
-    B = totalizador_umbral_anio.set_index("Año_banda")["Cuantia_bruta"]     if not totalizador_umbral_anio.empty    else pd.Series()
-    
-    tabla_final                 = pd.DataFrame({"Tipo A": A, "Tipo B": B}).fillna(0).T
-    tabla_final["TOTAL"]        = tabla_final.sum(axis=1)
-    tabla_final.loc["TOTAL"]    = tabla_final.sum()
-    promedio_anual              = tabla_final.loc["TOTAL"].drop("TOTAL").mean() if not tabla_final.empty else 0
+    A = totalizador_umbral.set_index("Año")["Total Pérdida neta"] if not totalizador_umbral.empty else pd.Series(dtype=float)
+    A.name = "Tipo A"
+    B = totalizador_umbral_anio.set_index("Año_banda")["Cuantia_bruta"] if not totalizador_umbral_anio.empty else pd.Series(dtype=float)
+    B.name = "Tipo B"
+
+    # Consolidar por año: columnas = años, filas = Tipo A / Tipo B
+    tabla_final = pd.concat([A, B], axis=1).fillna(0).T
+    tabla_final["TOTAL"] = tabla_final.sum(axis=1)
+    # Agregar fila TOTAL (suma por columnas/años)
+    tabla_final.loc["TOTAL"] = tabla_final.sum()
+    # Promedio anual: media de los totales por año (excluyendo la columna TOTAL)
+    if not tabla_final.empty:
+        per_year_totals = tabla_final.loc["TOTAL"].drop("TOTAL")
+        promedio_anual = per_year_totals.mean()
+    else:
+        promedio_anual = 0
 
     clases_B = set(
         zip(
@@ -408,15 +386,13 @@ with st.sidebar:
 col_f1, col_f2, col_f3  = st.columns        (3)
 with col_f1: file_an9   = st.file_uploader  ("📂 RERO_PERDIDA"      ,   type=["xlsx"])
 with col_f2: file_an10  = st.file_uploader  ("📂 RERO_RECUPERADO"   ,   type=["xlsx"])
-with col_f3: file_base  = st.file_uploader  ("📂 Base EROs"         ,   type=["xlsx"])
 
-if file_an9 and file_an10 and file_base:
+if file_an9 and file_an10:
     if st.button("▶ Ejecutar cálculo IPI", width="stretch"):
         An9     = pd.read_excel(file_an9 )
         An10    = pd.read_excel(file_an10)
-        df_base = pd.read_excel(file_base)
 
-        res = ejecutar_calculo(An9, An10, df_base, umbral_val)
+        res = ejecutar_calculo(An9, An10, umbral_val)
 
 # ==========================================================
 # CALCULO COCIENTE (C)
@@ -478,15 +454,6 @@ if file_an9 and file_an10 and file_base:
             st.subheader("Listado de Eventos sobre el Umbral")
             st.dataframe(res['df_filtrado'], width="stretch")
 
-
-if st.button("Guardar / Actualizar"):
-    guardar_periodo(
-        periodo,
-        cp_calculado,
-        c_cociente,
-        ipi_final
-    )
-    st.success(f"Periodo {periodo} guardado correctamente")
 
 data = leer_data()
 
