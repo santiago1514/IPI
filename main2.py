@@ -167,7 +167,7 @@ def ejecutar_calculo(An9, An10, umbral_input):
     fecha_min       = ultima_fecha - pd.DateOffset(months=60)
 
     An9_2 = An9[
-        (An9["Fecha_de_registro_contable"] >= fecha_min) &
+        (An9["Fecha_de_registro_contable"] > fecha_min) &
         (An9["Fecha_de_registro_contable"] <= ultima_fecha)
     ].copy()
 
@@ -231,9 +231,18 @@ def ejecutar_calculo(An9, An10, umbral_input):
     # 5. DEFINICIÓN DE AÑO BANDA (NOV–OCT)
     # ------------------------------------------------------
     DATA["Fecha"] = pd.to_datetime(DATA["Fecha_de_registro_contable"], errors="coerce")
-    DATA["anio_nov"] = DATA["Fecha"].dt.year
-    DATA.loc[DATA["Fecha"].dt.month <= 10, "anio_nov"] -= 1
-    DATA["Año_banda"] = DATA["anio_nov"] - DATA["anio_nov"].min() + 1
+    
+    # Calcular fecha mínima para referencia
+    fecha_min_data = DATA["Fecha"].min()
+    
+    # Calcular meses desde la fecha mínima
+    DATA["meses_desde_inicio"] = (
+        (DATA["Fecha"].dt.year - fecha_min_data.year) * 12 + 
+        (DATA["Fecha"].dt.month - fecha_min_data.month)
+    )
+    
+    # Año banda = cada 12 meses es una banda
+    DATA["Año_banda"] = (DATA["meses_desde_inicio"] // 12) + 1
 
     # ------------------------------------------------------
     # 6. IDENTIFICACIÓN DE EVENTOS TIPO A
