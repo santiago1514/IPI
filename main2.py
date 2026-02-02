@@ -166,7 +166,7 @@ def ejecutar_calculo(An9, An10, umbral_input):
     An9["Fecha_de_registro_contable"] = pd.to_datetime(
         An9["Fecha_de_registro_contable"]
     )
-    ultima_fecha    = date(anio, mes_num, ultimo_dia)
+    ultima_fecha = pd.Timestamp(anio, mes_num, ultimo_dia)
     fecha_min       = ultima_fecha - pd.DateOffset(months=60)
 
     An9_2 = An9[
