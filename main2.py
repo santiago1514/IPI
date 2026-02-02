@@ -27,7 +27,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from io import BytesIO
-from datetime import datetime
+import calendar
+from datetime import datetime, date
 import streamlit as st
 import json 
 from pathlib import Path
@@ -44,6 +45,8 @@ meses = {
 
 anio = st.selectbox("Año", range(2025, datetime.now().year + 1))
 mes_num = st.selectbox("Mes", meses.keys(), format_func=lambda x: meses[x])
+ultimo_dia = calendar.monthrange(anio, mes_num)[1]
+
 
 periodo = f"{anio}-{mes_num:02d}"
 st.write("Periodo seleccionado:", periodo)
@@ -163,7 +166,7 @@ def ejecutar_calculo(An9, An10, umbral_input):
     An9["Fecha_de_registro_contable"] = pd.to_datetime(
         An9["Fecha_de_registro_contable"]
     )
-    ultima_fecha    = An9["Fecha_de_registro_contable"].max()
+    ultima_fecha    = date(anio, mes_num, ultimo_dia)
     fecha_min       = ultima_fecha - pd.DateOffset(months=60)
 
     An9_2 = An9[
